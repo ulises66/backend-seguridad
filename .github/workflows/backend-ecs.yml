@@ -105,6 +105,17 @@ jobs:
             --cluster "${CLUSTER_NAME}" \
             --services "${SERVICE_NAME}"
 
+      - name: Get Backend Security Group from CloudFormation outputs
+        run: |
+          STACK_NAME="InfraEcommerceStack"
+          SG_ID=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='BackendSecurityGroupId'].OutputValue" \
+            --output text)
+          echo "Backend SG ID: $SG_ID"
+          echo "SG_ID=$SG_ID" >> $GITHUB_ENV
+
+
       # ----- MIGRACIONES KNEX POST-DEPLOY -----
       - name: Run DB migrations task (Knex)
         env:
