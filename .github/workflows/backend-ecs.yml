@@ -123,11 +123,28 @@ jobs:
           echo "SUBNETS=$(cat subnets.json | jq -r 'join(\" \")')" >> $GITHUB_ENV
           echo "SGS=$(cat sgs.json | jq -r 'join(\" \")')" >> $GITHUB_ENV
 
+      # ----- MIGRACIONES KNEX POST-DEPLOY -----
       - name: Run DB migrations task (Knex)
         env:
           MIGRATION_COMMAND: ${{ secrets.MIGRATION_COMMAND || env.DEFAULT_MIGRATION_COMMAND }}
         run: |
-          # overrides para inyectar el comando en el contenedor BackendContainer
+          # Determina subred y SG directamente (usando AWS CLI)
+          SUBNETS=$(aws ec2 describe-subnets \
+            --filters "Name=tag:aws-cdk:subnet-type,Values=Public" \
+            --query 'Subnets[].SubnetId' --output text)
+          SGS=$(aws ec2 describe-security-groups \
+            --filters "Name=group-name,Values=*BackendServiceSecurityGroup*" \
+            --query 'SecurityGroups[].GroupId' --output text)
+
+          echo "Subnets: $SUBNETS"
+          echo "SGs: $SGS"
+
+          if [ -z "$SUBNETS" ]; then
+            echo "ERROR: No se encontraron subnets públicas para ejecutar el task."
+            exit 1
+          fi
+
+          # overrides para ejecutar el comando de migraciones
           cat > overrides.json <<'JSON'
           {
             "containerOverrides": [
@@ -135,13 +152,13 @@ jobs:
             ]
           }
           JSON
+
           CMD_ARRAY=$(jq -Rn --arg cmd "${MIGRATION_COMMAND}" '$cmd | split(" ")')
           jq --arg name "${CONTAINER_NAME}" --argjson cmd "$CMD_ARRAY" '
             .containerOverrides = [ { "name": $name, "command": $cmd } ]' \
             overrides.json > overrides.final.json
 
-          # Ejecuta one-off task con la MISMA task definition (misma imagen)
-          # Si tu servicio está en subred pública, manten "assignPublicIp=ENABLED"
+          # Ejecuta la task one-off con las subnets y SG correctos
           TASK_ARN=$(aws ecs run-task \
             --cluster "${CLUSTER_NAME}" \
             --launch-type FARGATE \
@@ -154,7 +171,6 @@ jobs:
           echo "TASK_ARN=$TASK_ARN"
           aws ecs wait tasks-stopped --cluster "${CLUSTER_NAME}" --tasks "$TASK_ARN"
 
-          # Verifica exit code
           EXIT_CODE=$(aws ecs describe-tasks --cluster "${CLUSTER_NAME}" --tasks "$TASK_ARN" \
             --query "tasks[0].containers[?name=='${CONTAINER_NAME}'].exitCode" --output text)
           echo "Migration exit code: $EXIT_CODE"
@@ -162,3 +178,4 @@ jobs:
             echo "Knex migrations failed."
             exit 1
           fi
+      
