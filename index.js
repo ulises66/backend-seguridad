@@ -46,7 +46,7 @@ app.get("/", (req, res) => {
     res.json({
         status: "ok",
         env: NODE_ENV || "dev",
-        message: "Backend API funcionando correctamente 🚀",
+        message: "Backend API funcionando correctamente",
     });
 });
 
@@ -132,5 +132,5 @@ app.post("/api/v1/users", async (req, res) => {
 // ============================
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });

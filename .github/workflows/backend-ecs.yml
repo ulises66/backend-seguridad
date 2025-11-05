@@ -13,11 +13,11 @@ env:
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   ECR_REPOSITORY: ${{ secrets.BE_ECR_REPOSITORY }}   # ej: ecommerce-backend
   CLUSTER_NAME: ${{ secrets.BE_CLUSTER_NAME }}       # ej: EcommerceCluster
-  SERVICE_NAME: ${{ secrets.BE_SERVICE_NAME }}       # ej: InfraEcommerceStack-BackendServiceXXXXX
-  CONTAINER_NAME: BackendContainer                   # Debe coincidir con CDK
+  SERVICE_NAME: ${{ secrets.BE_SERVICE_NAME }}       # ej: InfraEcommerceStack-BackendServiceXXXX
+  CONTAINER_NAME: BackendContainer
   IMAGE_TAG: ${{ github.sha }}
   IMAGE_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.BE_ECR_REPOSITORY }}
-  DEFAULT_MIGRATION_COMMAND: 'npx knex migrate:latest'  # o "npm run migrate"
+  DEFAULT_MIGRATION_COMMAND: 'npx knex migrate:latest'
 
 jobs:
   deploy:
@@ -27,7 +27,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Usamos credenciales estáticas via secrets
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -92,7 +91,7 @@ jobs:
               --desired-count 1 >/dev/null
           fi
 
-      - name: Update service (Rolling Deploy)
+      - name: Update ECS service (rolling deploy)
         run: |
           aws ecs update-service \
             --cluster "${CLUSTER_NAME}" \
@@ -105,23 +104,6 @@ jobs:
           aws ecs wait services-stable \
             --cluster "${CLUSTER_NAME}" \
             --services "${SERVICE_NAME}"
-
-      # ----- MIGRACIONES KNEX POST-DEPLOY -----
-      - name: Read service networking (subnets & SGs)
-        id: net
-        run: |
-          aws ecs describe-services \
-            --cluster "${CLUSTER_NAME}" \
-            --services "${SERVICE_NAME}" \
-            --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' \
-            --output json > subnets.json
-          aws ecs describe-services \
-            --cluster "${CLUSTER_NAME}" \
-            --services "${SERVICE_NAME}" \
-            --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' \
-            --output json > sgs.json
-          echo "SUBNETS=$(cat subnets.json | jq -r 'join(\" \")')" >> $GITHUB_ENV
-          echo "SGS=$(cat sgs.json | jq -r 'join(\" \")')" >> $GITHUB_ENV
 
       # ----- MIGRACIONES KNEX POST-DEPLOY -----
       - name: Run DB migrations task (Knex)
@@ -183,7 +165,6 @@ jobs:
           echo "Migration exit code: $EXIT_CODE"
           if [ "$EXIT_CODE" != "0" ]; then
             echo "Knex migrations failed."
-            # Muestra logs de CloudWatch para debug
             LOG_GROUP=$(aws ecs describe-tasks --cluster "${CLUSTER_NAME}" --tasks "$TASK_ARN" \
               --query "tasks[0].containers[?name=='${CONTAINER_NAME}'].logConfiguration.options.\"awslogs-group\"" --output text)
             echo "Mostrando últimos logs de migración:"
