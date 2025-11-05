@@ -9,7 +9,7 @@ const knex = require("knex");
 const {
     DB_HOST,
     DB_PORT = 3306,
-    DB_USER,
+    DB_USERNAME,
     DB_PASSWORD,
     DB_NAME,
     NODE_ENV,
@@ -25,7 +25,7 @@ const db = knex({
     connection: {
         host: DB_HOST,
         port: DB_PORT,
-        user: DB_USER,
+        user: DB_USERNAME,
         password: DB_PASSWORD,
         database: DB_NAME,
     },
